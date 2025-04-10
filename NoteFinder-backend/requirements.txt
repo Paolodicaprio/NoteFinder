@@ -1,0 +1,13 @@
+Flask
+flask-cors
+Pillow
+pytesseract
+mysql-connector-python
+Flask-Login
+Flask-Bcrypt
+Werkzeug
+<<<<<<< HEAD
+flasgger
+=======
+flasgger
+>>>>>>> 072eddc13ac39ed02e4e85316ac258d7569cf234
