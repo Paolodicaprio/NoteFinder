@@ -40,6 +40,17 @@ source venv/bin/activate
 ```bash
 pip install -r requirements.txt
 ```
+## Ensuite démarrer wamp
+## Puis créer une db nommer entité et importer la db situé dans le dossier du backend
+
 ```bash
 python app.py
 ```
+## Les identifiants de connexion pour le compte admi sont:
+## Email: dagbapaolo@gmail.com
+## Mot de passe: dagbapaolo@gmail.com
+
+## L'image de test pour le scannage de note se trouve dans le dossier upload
+
+## Pour avoir accès à la doc de l'api:
+## http://127.0.0.1:5000/apidocs/

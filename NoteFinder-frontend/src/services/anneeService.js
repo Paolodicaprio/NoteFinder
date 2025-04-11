@@ -19,25 +19,44 @@ const handleServiceError = (error, defaultMessage) => {
   }
 };
 // Années académiques
-export const fetchAnneesAcademiques = async () => {
+export const fetchAnneesAcademiques = async (config = {}) => {
   try {
-    const response = await httpService.get('/api/annees-academiques');
-    
-    // Vérifiez d'abord si la réponse est un tableau
+    const response = await httpService.get('/api/annees-academiques', {
+      ...config,
+      params: {
+        _: Date.now() // Cache buster
+      },
+      timeout: 10000 // 10 secondes timeout
+    });
+
+    // Validation robuste des données
+    if (!response.data) {
+      throw new Error('Aucune donnée reçue');
+    }
+
     if (Array.isArray(response.data)) {
       return response.data;
     }
-    
-    // Si la réponse est encapsulée dans un objet {data: [...]}
-    if (response.data && Array.isArray(response.data.data)) {
+
+    if (response.data.data && Array.isArray(response.data.data)) {
       return response.data.data;
     }
-    
+
     throw new Error('Format de données inattendu');
-    
+
   } catch (error) {
-    console.error('Error fetching academic years:', error);
-    throw new Error(error.response?.data?.message || 'Failed to fetch academic years');
+    console.error('Erreur fetchAnneesAcademiques:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+
+    if (error.code === 'ECONNABORTED') {
+      throw new Error('Timeout: Le serveur a mis trop de temps à répondre');
+    }
+
+    throw error;
   }
 };
 

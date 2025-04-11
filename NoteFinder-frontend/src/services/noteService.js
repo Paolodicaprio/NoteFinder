@@ -3,15 +3,41 @@ import httpService from './api';
 const noteService = {
   async fetchNotes() {
     try {
-      const response = await httpService.get('/api/note');
-      return response.data; // Retourne simplement les données
-    } catch (error) {
-      if (error.response) {
-        if (error.response.status === 500) {
-          throw new Error('Erreur serveur lors de la récupération des notes');
-        }
+      const response = await httpService.get('/api/note', {
+        params: {
+          _: Date.now() // Cache buster
+        },
+        timeout: 10000 // 10 secondes timeout
+      });
+      
+      if (!Array.isArray(response.data)) {
+        throw new Error('Format de données invalide');
       }
-      throw new Error('Erreur lors de la récupération des notes');
+      
+      return response.data;
+      
+    } catch (error) {
+      let errorMessage = 'Erreur lors de la récupération des notes';
+      
+      if (error.response) {
+        // Erreurs HTTP
+        if (error.response.status === 500) {
+          errorMessage = 'Erreur serveur (500) - Veuillez réessayer plus tard';
+        } else if (error.response.status === 404) {
+          errorMessage = 'Endpoint non trouvé (404)';
+        }
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Timeout - Le serveur a mis trop de temps à répondre';
+      }
+      
+      console.error('Erreur fetchNotes:', {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        url: error.config?.url
+      });
+      
+      throw new Error(errorMessage);
     }
   },
 

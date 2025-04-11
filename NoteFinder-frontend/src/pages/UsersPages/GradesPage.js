@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import noteService from '../../services/noteService';
 import parcourService from '../../services/parcourService';
+import { fetchAnneesAcademiques } from '../../services/anneeService';
 
 function GradesPage() {
   const location = useLocation();
@@ -12,36 +13,41 @@ function GradesPage() {
   const [searchMatricule, setSearchMatricule] = useState('');
   const [studentInfo, setStudentInfo] = useState(null);
   const [error, setError] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
-  // Fonction pour récupérer les données avec gestion d'erreur
-  const fetchDataWithRetry = async (fetchFunction, maxRetries = 3) => {
-    let retries = 0;
-    while (retries < maxRetries) {
+  
+  const [apiStatus, setApiStatus] = useState({
+    notes: { loading: false, error: null },
+    parcours: { loading: false, error: null },
+    annees: { loading: false, error: null }
+  });
+
+  // Configuration du timeout
+  const API_TIMEOUT = 10000; // 10 secondes
+
+  const fetchDataWithRetry = async (serviceCall, resourceName, maxRetries = 3) => {
+    let lastError = null;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const response = await fetchFunction();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+        const response = await serviceCall({ signal: controller.signal });
+        clearTimeout(timeoutId);
         return response;
-      } catch (err) {
-        retries++;
-        if (retries === maxRetries) {
-          throw err;
+
+      } catch (error) {
+        lastError = error;
+        console.warn(`Tentative ${attempt + 1} échouée pour ${resourceName}:`, error.message);
+        
+        if (attempt < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
         }
-        await new Promise(resolve => setTimeout(resolve, 1000 * retries));
       }
     }
-  };
 
-  // Transforme les données brutes des parcours en format utilisable (identique à ResultPage)
-  const transformParcoursData = (parcoursArray) => {
-    if (!Array.isArray(parcoursArray)) {
-      console.error("Données Parcours invalides:", parcoursArray);
-      return [];
-    }
-    return parcoursArray.map(parcour => ({
-      id: parcour[0] || '',     // parcours_etudiant_id
-      matricule: parcour[1] || '',
-      nom: parcour[9] || '',    // nom étudiant
-      prenom: parcour[10] || '' // prénom étudiant
-    })).filter(parcour => parcour.id && parcour.matricule);
+    throw lastError;
   };
 
   useEffect(() => {
@@ -50,94 +56,83 @@ function GradesPage() {
         setLoading(true);
         setError(null);
 
-        if (location.state?.extractedNotes) {
-          const convertedGrades = location.state.extractedNotes.map((note, index) => ({
-            id: index + 1,
-            matricule: note.matricule,
-            nom: note.nom,
-            prenom: note.prenom,
-            note: note.note,
-            ecue_id: note.ecue_id || 'N/A',
-            annee_academique: note.annee_academique || 'N/A',
-            date: note.date || new Date().toLocaleDateString('fr-FR')
-          }));
-          setGrades(convertedGrades);
-          setFilteredGrades(convertedGrades);
-          return;
+        // 1. Récupération des années académiques
+        const anneesData = await fetchDataWithRetry(
+          () => fetchAnneesAcademiques(),
+          'années académiques'
+        );
+
+        // Vérification du format des données
+        if (!Array.isArray(anneesData)) {
+          throw new Error('Format de données invalide pour les années académiques');
         }
 
-        // Récupération des données depuis les APIs avec retry
-        const [notesData, parcoursData] = await Promise.all([
-          fetchDataWithRetry(() => noteService.fetchNotes()),
-          fetchDataWithRetry(() => parcourService.getParcours())
-        ]);
+        // 2. Récupération des parcours
+        const parcoursData = await fetchDataWithRetry(
+          () => parcourService.getParcours(),
+          'parcours étudiants'
+        );
 
-        // Vérification des données reçues
-        if (!Array.isArray(notesData)) throw new Error("Format de données notes invalide");
-        if (!Array.isArray(parcoursData)) throw new Error("Format de données parcours invalide");
+        // 3. Récupération des notes
+        const notesData = await fetchDataWithRetry(
+          () => noteService.fetchNotes(),
+          'notes'
+        );
 
-        // Transformation des données des parcours
-        const transformedParcours = transformParcoursData(parcoursData);
+        // Création des mappings
+        const anneesMap = new Map(anneesData.map(item => [item[0], item[1]]));
+        
+        const parcoursMap = new Map(
+          parcoursData.map(item => [
+            item[0], {
+              matricule: item[1],
+              annee_academique_id: item[3],
+              nom: item[9],
+              prenom: item[10]
+            }
+          ])
+        );
 
-        // Création du mapping des parcours
-        const parcoursMap = new Map();
-        transformedParcours.forEach(parcour => {
-          parcoursMap.set(parcour.id, parcour);
-        });
-
-        // Construction des notes formatées
+        // Formatage des notes
         const formattedGrades = notesData.map(note => {
-          try {
-            const parcoursId = note[2]; // parcours_etudiant_id
-            const parcour = parcoursMap.get(parcoursId) || { 
-              matricule: 'N/A', 
-              nom: 'N/A', 
-              prenom: 'N/A' 
-            };
+          const parcour = parcoursMap.get(note[2]) || {};
+          const anneeAcademique = parcour.annee_academique_id 
+            ? anneesMap.get(parcour.annee_academique_id) 
+            : 'N/A';
 
-            return {
-              id: note[0],
-              ecue_id: note[1],
-              parcours_etudiant_id: parcoursId,
-              note: parseFloat(note[3]) || 0,
-              date: new Date(note[4]).toLocaleDateString('fr-FR'),
-              matricule: parcour.matricule,
-              nom: parcour.nom,
-              prenom: parcour.prenom,
-              annee_etude: note[19] || 'N/A',
-              annee_academique: note[25] || 'N/A'
-            };
-          } catch (err) {
-            console.error("Erreur de formatage d'une note:", err, note);
-            return null;
-          }
-        }).filter(grade => grade !== null);
+          return {
+            id: note[0],
+            ecue_id: note[1],
+            matricule: parcour.matricule || 'N/A',
+            nom: parcour.nom || 'N/A',
+            prenom: parcour.prenom || 'N/A',
+            note: parseFloat(note[3]) || 0,
+            date: new Date(note[4]).toLocaleDateString('fr-FR'),
+            annee_academique: anneeAcademique
+          };
+        });
 
         setGrades(formattedGrades);
         setFilteredGrades(formattedGrades);
 
-        // Gestion du matricule spécifique si présent
-        if (location.state?.studentMatricule) {
-          const matricule = location.state.studentMatricule;
-          setSearchMatricule(matricule);
-          // Trouver l'étudiant dans les parcours transformés
-          const etudiant = transformedParcours.find(p => p.matricule === matricule) || {};
-          setStudentInfo({
-            matricule,
-            nom: location.state.studentNom || etudiant.nom || 'N/A',
-            prenom: location.state.studentPrenom || etudiant.prenom || 'N/A'
-          });
+      } catch (error) {
+        console.error('Erreur fatale:', {
+          message: error.message,
+          stack: error.stack
+        });
+
+        setError(`Erreur: ${error.message}. ${retryCount < 2 ? 'Nouvelle tentative dans 5 secondes...' : ''}`);
+
+        if (retryCount < 2) {
+          setTimeout(() => setRetryCount(c => c + 1), 5000);
         }
-      } catch (err) {
-        console.error("Erreur lors du chargement des données:", err);
-        setError(err.message || "Erreur lors du chargement des données");
       } finally {
         setLoading(false);
       }
     };
 
     fetchAllData();
-  }, [location.state]);
+  }, [location.state, retryCount]);
 
   useEffect(() => {
     if (searchMatricule) {
@@ -178,6 +173,38 @@ function GradesPage() {
       </div>
     );
   }
+
+  function ApiStatusIndicator() {
+    return (
+      <div style={{
+        marginTop: '20px',
+        padding: '10px',
+        backgroundColor: '#f8f9fa',
+        borderRadius: '5px',
+        fontSize: '14px'
+      }}>
+        <h4>Statut des APIs:</h4>
+        <div>
+          <span style={{ fontWeight: 'bold' }}>Notes:</span>
+          {apiStatus.notes.loading ? ' ⏳' : apiStatus.notes.error ? ' ❌' : ' ✅'}
+        </div>
+        <div>
+          <span style={{ fontWeight: 'bold' }}>Parcours:</span>
+          {apiStatus.parcours.loading ? ' ⏳' : apiStatus.parcours.error ? ' ❌' : ' ✅'}
+        </div>
+        <div>
+          <span style={{ fontWeight: 'bold' }}>Années:</span>
+          {apiStatus.annees.loading ? ' ⏳' : apiStatus.annees.error ? ' ❌' : ' ✅'}
+        </div>
+        {retryCount > 0 && (
+          <div style={{ marginTop: '10px', color: '#6c757d' }}>
+            Tentative de rechargement #{retryCount + 1}
+          </div>
+        )}
+      </div>
+    );
+  }
+
 
   return (
     <div style={{ 
@@ -222,15 +249,18 @@ function GradesPage() {
       </h1>
 
       {error && (
-        <div style={{
-          backgroundColor: '#fee2e2',
-          color: '#b91c1c',
-          padding: '12px',
-          borderRadius: '4px',
-          marginBottom: '16px'
-        }}>
-          {error}
-        </div>
+        <>
+          <div style={{ 
+            backgroundColor: '#fee2e2',
+            color: '#b91c1c',
+            padding: '12px',
+            borderRadius: '4px',
+            marginBottom: '16px'
+          }}>
+            {error}
+          </div>
+          <ApiStatusIndicator />
+        </>
       )}
 
       {!studentInfo && (
