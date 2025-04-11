@@ -52,7 +52,7 @@ swagger = Swagger(app)
 # ----------------------------------------------------------------------------------------
 
 # Connexion MySQL
-mysql = mysql.connector.connect(
+mysqlconn = mysql.connector.connect(
     host=app.config['MYSQL_HOST'],
     user=app.config['MYSQL_USER'],
     password=app.config['MYSQL_PASSWORD'],
@@ -71,13 +71,12 @@ class User(UserMixin):
         self.role = role
 
 def fetch_data(query, params=None):
-    cursor = mysql.cursor()
+    cursor = mysqlconn.cursor()
     if params:
         cursor.execute(query, params)
     else:
         cursor.execute(query)
     data = cursor.fetchall()
-    cursor.close()
     return data
 
 # Chemin pour enregistrer les fichiers téléchargés
@@ -91,7 +90,7 @@ def allowed_file(filename):
 
 @login_manager.user_loader
 def load_user(user_id):
-    cursor = mysql.cursor(dictionary=True)
+    cursor = mysqlconn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM membre_administratif WHERE id = %s", (user_id,))
     user = cursor.fetchone()
     cursor.close()
@@ -104,7 +103,7 @@ def load_user(user_id):
 # Fonction pour obtenir une connexion MySQL
 def get_db_connection():
     try:
-        conn = mysql
+        conn = mysqlconn
         return conn
     except Exception as e:
         print(f"Error connecting to MySQL: {e}")
@@ -149,7 +148,7 @@ def apilogin():
     if not email or not password:
         return jsonify({'message': 'Email et mot de passe requis'}), 400
     
-    with mysql.cursor(dictionary=True) as cursor:
+    with mysqlconn.cursor(dictionary=True) as cursor:
         cursor.execute("SELECT * FROM membre_administratif WHERE email = %s", (email,))
         user = cursor.fetchone()
     
@@ -219,7 +218,7 @@ def apicreate_account():
     if not all([nom, prenom, email, password, role]):
         return jsonify({'message': 'Tous les champs sont requis'}), 400
     
-    with mysql.cursor(dictionary=True) as cursor:
+    with mysqlconn.cursor(dictionary=True) as cursor:
         cursor.execute("SELECT * FROM membre_administratif WHERE email = %s", (email,))
         user = cursor.fetchone()
         
@@ -229,7 +228,7 @@ def apicreate_account():
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         cursor.execute("INSERT INTO membre_administratif (nom, prenom, email, mot_de_passe, role) VALUES (%s, %s, %s, %s, %s)",
                        (nom, prenom, email, hashed_password, role))
-        mysql.commit()
+        mysqlconn.commit()
     
     return jsonify({'message': 'Compte créé avec succès'}), 201
 
@@ -248,7 +247,7 @@ def get_user_profile():
     if not user_id:
         return jsonify({'error': 'Utilisateur non connecté'}), 401
 
-    cursor = mysql.cursor(dictionary=True)
+    cursor = mysqlconn.cursor(dictionary=True)
     cursor.execute("SELECT id, nom, prenom, email, role FROM membre_administratif WHERE id = %s", (user_id,))
     user = cursor.fetchone()
     cursor.close()

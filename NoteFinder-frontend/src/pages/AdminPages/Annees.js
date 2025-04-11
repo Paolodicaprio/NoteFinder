@@ -13,163 +13,198 @@ import {
   updateGrade
 } from '../../services/gradeService';
 import Sidebar from '../../components/Sidebar';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const Annees = ({ user }) => {
   const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
   const [annees, setAnnees] = useState([]);
   const [grades, setGrades] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [filterAnnee, setFilterAnnee] = useState('');
-  const [filterNom, setFilterNom] = useState('');
-  const [newAnnee, setNewAnnee] = useState('');
-  const [newGrade, setNewGrade] = useState('');
-  const [editingAnnee, setEditingAnnee] = useState(null);
-  const [editingGrade, setEditingGrade] = useState(null);
-  const [editAnneeValue, setEditAnneeValue] = useState('');
-  const [editGradeValue, setEditGradeValue] = useState('');
+  const [filters, setFilters] = useState({
+    filterAnnee: '',
+    filterGrade: ''
+  });
+  const [formData, setFormData] = useState({
+    newAnnee: '',
+    newGrade: ''
+  });
+  const [editingItem, setEditingItem] = useState({
+    type: null, // 'annee' ou 'grade'
+    id: null,
+    value: ''
+  });
 
-  // Charger les données
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Charger les années académiques
-      const anneesData = await fetchAnneesAcademiques();
-      const formattedAnnees = anneesData.map(item => ({
-        id: item[0],
-        annee: item[1]
-      }));
-      setAnnees(formattedAnnees);
-      
-      // Charger les grades (avec gestion d'erreur séparée)
+  // Charger les données en fonction des filtres
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
       try {
+        // Charger les années académiques
+        const anneesData = await fetchAnneesAcademiques();
+        const formattedAnnees = anneesData.map(item => ({
+          id: item.id,
+          annee: item.annee
+        }));
+        setAnnees(formattedAnnees);
+        
+        // Charger les grades
         const gradesData = await fetchGrades();
         setGrades(gradesData);
-      } catch (gradesError) {
-        console.error("Error loading grades:", gradesError);
-        setGrades([]);
-      }
-      
-    } catch (error) {
-      console.error("Error loading data:", error);
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Ajouter une année d'étude
-  const handleAddAnnee = async () => {
-    if (!newAnnee.trim()) {
-      alert('Veuillez entrer une année valide');
-      return;
-    }
-
-    try {
-      await addAnneeAcademique({ annee: newAnnee });
-      setNewAnnee('');
-      await loadData();
-    } catch (error) {
-      console.error("Erreur détaillée :", error.response?.data || error.message);
-      setError(`Erreur: ${error.response?.data?.message || error.message}`);
-    }
-  };
-
-  // Mettre à jour une année d'étude
-  const handleUpdateAnnee = async () => {
-    if (!editAnneeValue.trim()) {
-      alert('Veuillez entrer une année valide');
-      return;
-    }
-
-    try {
-      await updateAnneeAcademique(editingAnnee.id, { annee: editAnneeValue });
-      setEditingAnnee(null);
-      setEditAnneeValue('');
-      await loadData();
-    } catch (error) {
-      setError('Erreur lors de la mise à jour : ' + error.message);
-    }
-  };
-
-  // Supprimer une année d'étude
-  const handleDeleteAnnee = async (id) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer cette année académique ?')) {
-      try {
-        await deleteAnneeAcademique(id);
-        await loadData();
       } catch (error) {
-        setError('Erreur lors de la suppression : ' + error.message);
+        toast.error(`Erreur de chargement: ${error.message}`);
+        console.error("Error loading data:", error);
+      } finally {
+        setIsLoading(false);
       }
+    };
+
+    loadData();
+  }, [filters]); // Réagit aux changements de filtres
+
+  // Gestion des filtres
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters({ ...filters, [name]: value });
+  };
+
+  // Ajouter une année académique
+  const handleAddAnnee = async () => {
+    if (!formData.newAnnee.trim()) {
+      toast.error('Veuillez entrer une année valide');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await addAnneeAcademique({ annee: formData.newAnnee });
+      toast.success('Année ajoutée avec succès');
+      setFormData({ ...formData, newAnnee: '' });
+      
+      // Actualiser les filtres pour déclencher le rechargement
+      setFilters({ ...filters });
+    } catch (error) {
+      toast.error(`Erreur: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Mettre à jour une année académique
+  const handleUpdateAnnee = async () => {
+    if (!editingItem.value.trim()) {
+      toast.error('Veuillez entrer une année valide');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await updateAnneeAcademique(editingItem.id, { annee: editingItem.value });
+      toast.success('Année mise à jour avec succès');
+      setEditingItem({ type: null, id: null, value: '' });
+      
+      // Actualiser les filtres pour déclencher le rechargement
+      setFilters({ ...filters });
+    } catch (error) {
+      toast.error(`Erreur: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Supprimer une année académique
+  const handleDeleteAnnee = async (id) => {
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer cette année académique ?')) return;
+
+    setIsLoading(true);
+    try {
+      await deleteAnneeAcademique(id);
+      toast.success('Année supprimée avec succès');
+      
+      // Actualiser les filtres pour déclencher le rechargement
+      setFilters({ ...filters });
+    } catch (error) {
+      toast.error(`Erreur: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Ajouter un grade
   const handleAddGrade = async () => {
-    if (!newGrade.trim()) {
-      alert('Veuillez entrer un grade valide');
+    if (!formData.newGrade.trim()) {
+      toast.error('Veuillez entrer un grade valide');
       return;
     }
+
+    setIsLoading(true);
     try {
-      await addGrade({ nom: newGrade });
-      setNewGrade('');
-      await loadData();
+      await addGrade({ nom: formData.newGrade });
+      toast.success('Grade ajouté avec succès');
+      setFormData({ ...formData, newGrade: '' });
+      
+      // Actualiser les filtres pour déclencher le rechargement
+      setFilters({ ...filters });
     } catch (error) {
-      setError('Erreur lors de l\'ajout du grade : ' + error.message);
+      toast.error(`Erreur: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Mettre à jour un grade
   const handleUpdateGrade = async () => {
-    if (!editGradeValue.trim()) {
-      alert('Veuillez entrer un grade valide');
+    if (!editingItem.value.trim()) {
+      toast.error('Veuillez entrer un grade valide');
       return;
     }
 
+    setIsLoading(true);
     try {
-      await updateGrade(editingGrade.id, { nom: editGradeValue });
-      setEditingGrade(null);
-      setEditGradeValue('');
-      await loadData();
+      await updateGrade(editingItem.id, { nom: editingItem.value });
+      toast.success('Grade mis à jour avec succès');
+      setEditingItem({ type: null, id: null, value: '' });
+      
+      // Actualiser les filtres pour déclencher le rechargement
+      setFilters({ ...filters });
     } catch (error) {
-      setError('Erreur lors de la mise à jour du grade : ' + error.message);
+      toast.error(`Erreur: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Supprimer un grade
   const handleDeleteGrade = async (id) => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer ce grade ?')) {
-      try {
-        await deleteGrade(id);
-        await loadData();
-      } catch (error) {
-        setError('Erreur lors de la suppression du grade : ' + error.message);
-      }
+    if (!window.confirm('Êtes-vous sûr de vouloir supprimer ce grade ?')) return;
+
+    setIsLoading(true);
+    try {
+      await deleteGrade(id);
+      toast.success('Grade supprimé avec succès');
+      
+      // Actualiser les filtres pour déclencher le rechargement
+      setFilters({ ...filters });
+    } catch (error) {
+      toast.error(`Erreur: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Filtrer les données
   const filteredAnnees = annees.filter(annee =>
-    annee.annee.toLowerCase().includes(filterAnnee.toLowerCase())
+    annee.annee.toLowerCase().includes(filters.filterAnnee.toLowerCase())
   );
 
   const filteredGrades = grades.filter(grade =>
-    grade.nom.toLowerCase().includes(filterNom.toLowerCase())
+    grade.nom.toLowerCase().includes(filters.filterGrade.toLowerCase())
   );
-
-  // Charger les données au montage
-  useEffect(() => {
-    loadData();
-  }, []);
 
   return (
     <div style={{ display: 'flex', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
-      {/* Utilisation du composant Sidebar */}
       <Sidebar user={user} />
       
-      {/* Contenu principal */}
       <div style={{ flex: 1, padding: '32px', marginLeft: '280px' }}>
         {/* Barre supérieure */}
         <div style={{ 
@@ -194,27 +229,10 @@ const Annees = ({ user }) => {
               gap: '12px'
             }}>
               <i className="fas fa-calendar-alt" style={{ color: '#16a34a' }}></i>
-              Gestion des Années Académiques
+              Gestion des Années Académiques et Grades
             </h1>
           </div>
         </div>
-
-        {/* Affichage des erreurs */}
-        {error && (
-          <div style={{ 
-            backgroundColor: '#fee2e2',
-            color: '#b91c1c',
-            padding: '16px',
-            borderRadius: '8px',
-            marginBottom: '24px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <i className="fas fa-exclamation-circle"></i>
-            <span>{error}</span>
-          </div>
-        )}
 
         {/* Section Années Académiques */}
         <div style={{ marginBottom: '32px' }}>
@@ -250,26 +268,22 @@ const Annees = ({ user }) => {
               </label>
               <input
                 type="text"
-                value={newAnnee}
-                onChange={(e) => setNewAnnee(e.target.value)}
+                name="newAnnee"
+                value={formData.newAnnee}
+                onChange={(e) => setFormData({ ...formData, newAnnee: e.target.value })}
                 placeholder="Ex: 2023-2024"
                 style={{ 
                   width: '100%',
                   padding: '10px 14px',
                   borderRadius: '8px',
                   border: '1px solid #e2e8f0',
-                  fontSize: '14px',
-                  transition: 'all 0.2s',
-                  ':focus': {
-                    outline: 'none',
-                    borderColor: '#4f46e5',
-                    boxShadow: '0 0 0 2px rgba(79, 70, 229, 0.2)'
-                  }
+                  fontSize: '14px'
                 }}
               />
             </div>
             <button
               onClick={handleAddAnnee}
+              disabled={isLoading}
               style={{ 
                 backgroundColor: '#4f46e5',
                 color: '#ffffff',
@@ -282,23 +296,21 @@ const Annees = ({ user }) => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                transition: 'all 0.2s',
-                ':hover': {
-                  backgroundColor: '#4338ca'
-                }
+                opacity: isLoading ? 0.7 : 1
               }}
             >
               <i className="fas fa-plus"></i>
-              Ajouter
+              {isLoading ? 'Ajout...' : 'Ajouter'}
             </button>
           </div>
 
-          {/* Filtre et tableau */}
+          {/* Filtre */}
           <div style={{ marginBottom: '16px' }}>
             <input
               type="text"
-              value={filterAnnee}
-              onChange={(e) => setFilterAnnee(e.target.value)}
+              name="filterAnnee"
+              value={filters.filterAnnee}
+              onChange={handleFilterChange}
               placeholder="Filtrer les années..."
               style={{ 
                 width: '100%',
@@ -306,61 +318,35 @@ const Annees = ({ user }) => {
                 padding: '10px 14px',
                 borderRadius: '8px',
                 border: '1px solid #e2e8f0',
-                fontSize: '14px',
-                transition: 'all 0.2s',
-                ':focus': {
-                  outline: 'none',
-                  borderColor: '#4f46e5',
-                  boxShadow: '0 0 0 2px rgba(79, 70, 229, 0.2)'
-                }
+                fontSize: '14px'
               }}
             />
           </div>
 
-          {loading ? (
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              padding: '24px',
-              color: '#64748b'
-            }}>
-              <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
-              Chargement des années académiques...
-            </div>
-          ) : (
-            <div style={{ 
-              backgroundColor: '#ffffff', 
-              borderRadius: '8px', 
-              overflow: 'hidden',
-              border: '1px solid #e2e8f0'
-            }}>
+          {/* Tableau */}
+          <div style={{ 
+            backgroundColor: '#ffffff', 
+            borderRadius: '8px', 
+            overflow: 'hidden',
+            border: '1px solid #e2e8f0'
+          }}>
+            {isLoading ? (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                padding: '24px',
+                color: '#64748b'
+              }}>
+                <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                Chargement des données...
+              </div>
+            ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ backgroundColor: '#f8fafc' }}>
                   <tr>
-                    <th style={{ 
-                      padding: '12px 16px', 
-                      textAlign: 'left', 
-                      fontSize: '14px', 
-                      fontWeight: 500, 
-                      color: '#64748b',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>ID</th>
-                    <th style={{ 
-                      padding: '12px 16px', 
-                      textAlign: 'left', 
-                      fontSize: '14px', 
-                      fontWeight: 500, 
-                      color: '#64748b',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>Année Académique</th>
-                    <th style={{ 
-                      padding: '12px 16px', 
-                      textAlign: 'left', 
-                      fontSize: '14px', 
-                      fontWeight: 500, 
-                      color: '#64748b',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>Actions</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 500, color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>ID</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 500, color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Année Académique</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 500, color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -369,11 +355,11 @@ const Annees = ({ user }) => {
                       <tr key={annee.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: '#334155' }}>{annee.id}</td>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: '#334155' }}>
-                          {editingAnnee?.id === annee.id ? (
+                          {editingItem.type === 'annee' && editingItem.id === annee.id ? (
                             <input
                               type="text"
-                              value={editAnneeValue}
-                              onChange={(e) => setEditAnneeValue(e.target.value)}
+                              value={editingItem.value}
+                              onChange={(e) => setEditingItem({ ...editingItem, value: e.target.value })}
                               style={{ 
                                 padding: '8px 12px',
                                 borderRadius: '6px',
@@ -387,7 +373,7 @@ const Annees = ({ user }) => {
                           )}
                         </td>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: '#334155' }}>
-                          {editingAnnee?.id === annee.id ? (
+                          {editingItem.type === 'annee' && editingItem.id === annee.id ? (
                             <>
                               <button
                                 onClick={handleUpdateAnnee}
@@ -405,10 +391,7 @@ const Annees = ({ user }) => {
                                 <i className="fas fa-check"></i> Valider
                               </button>
                               <button
-                                onClick={() => {
-                                  setEditingAnnee(null);
-                                  setEditAnneeValue('');
-                                }}
+                                onClick={() => setEditingItem({ type: null, id: null, value: '' })}
                                 style={{ 
                                   backgroundColor: '#64748b',
                                   color: '#ffffff',
@@ -425,10 +408,7 @@ const Annees = ({ user }) => {
                           ) : (
                             <>
                               <button 
-                                onClick={() => {
-                                  setEditingAnnee(annee);
-                                  setEditAnneeValue(annee.annee);
-                                }}
+                                onClick={() => setEditingItem({ type: 'annee', id: annee.id, value: annee.annee })}
                                 style={{ 
                                   color: '#4f46e5', 
                                   background: 'none', 
@@ -459,20 +439,15 @@ const Annees = ({ user }) => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="3" style={{ 
-                        padding: '24px', 
-                        textAlign: 'center', 
-                        color: '#64748b',
-                        fontStyle: 'italic'
-                      }}>
+                      <td colSpan="3" style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
                         Aucune année académique trouvée
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Section Grades */}
@@ -509,26 +484,22 @@ const Annees = ({ user }) => {
               </label>
               <input
                 type="text"
-                value={newGrade}
-                onChange={(e) => setNewGrade(e.target.value)}
+                name="newGrade"
+                value={formData.newGrade}
+                onChange={(e) => setFormData({ ...formData, newGrade: e.target.value })}
                 placeholder="Ex: Licence 1"
                 style={{ 
                   width: '100%',
                   padding: '10px 14px',
                   borderRadius: '8px',
                   border: '1px solid #e2e8f0',
-                  fontSize: '14px',
-                  transition: 'all 0.2s',
-                  ':focus': {
-                    outline: 'none',
-                    borderColor: '#4f46e5',
-                    boxShadow: '0 0 0 2px rgba(79, 70, 229, 0.2)'
-                  }
+                  fontSize: '14px'
                 }}
               />
             </div>
             <button
               onClick={handleAddGrade}
+              disabled={isLoading}
               style={{ 
                 backgroundColor: '#4f46e5',
                 color: '#ffffff',
@@ -541,23 +512,21 @@ const Annees = ({ user }) => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                transition: 'all 0.2s',
-                ':hover': {
-                  backgroundColor: '#4338ca'
-                }
+                opacity: isLoading ? 0.7 : 1
               }}
             >
               <i className="fas fa-plus"></i>
-              Ajouter
+              {isLoading ? 'Ajout...' : 'Ajouter'}
             </button>
           </div>
 
-          {/* Filtre et tableau */}
+          {/* Filtre */}
           <div style={{ marginBottom: '16px' }}>
             <input
               type="text"
-              value={filterNom}
-              onChange={(e) => setFilterNom(e.target.value)}
+              name="filterGrade"
+              value={filters.filterGrade}
+              onChange={handleFilterChange}
               placeholder="Filtrer les grades..."
               style={{ 
                 width: '100%',
@@ -565,61 +534,35 @@ const Annees = ({ user }) => {
                 padding: '10px 14px',
                 borderRadius: '8px',
                 border: '1px solid #e2e8f0',
-                fontSize: '14px',
-                transition: 'all 0.2s',
-                ':focus': {
-                  outline: 'none',
-                  borderColor: '#4f46e5',
-                  boxShadow: '0 0 0 2px rgba(79, 70, 229, 0.2)'
-                }
+                fontSize: '14px'
               }}
             />
           </div>
 
-          {loading ? (
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              padding: '24px',
-              color: '#64748b'
-            }}>
-              <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
-              Chargement des grades...
-            </div>
-          ) : (
-            <div style={{ 
-              backgroundColor: '#ffffff', 
-              borderRadius: '8px', 
-              overflow: 'hidden',
-              border: '1px solid #e2e8f0'
-            }}>
+          {/* Tableau */}
+          <div style={{ 
+            backgroundColor: '#ffffff', 
+            borderRadius: '8px', 
+            overflow: 'hidden',
+            border: '1px solid #e2e8f0'
+          }}>
+            {isLoading ? (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                padding: '24px',
+                color: '#64748b'
+              }}>
+                <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }}></i>
+                Chargement des données...
+              </div>
+            ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ backgroundColor: '#f8fafc' }}>
                   <tr>
-                    <th style={{ 
-                      padding: '12px 16px', 
-                      textAlign: 'left', 
-                      fontSize: '14px', 
-                      fontWeight: 500, 
-                      color: '#64748b',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>ID</th>
-                    <th style={{ 
-                      padding: '12px 16px', 
-                      textAlign: 'left', 
-                      fontSize: '14px', 
-                      fontWeight: 500, 
-                      color: '#64748b',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>Nom</th>
-                    <th style={{ 
-                      padding: '12px 16px', 
-                      textAlign: 'left', 
-                      fontSize: '14px', 
-                      fontWeight: 500, 
-                      color: '#64748b',
-                      borderBottom: '1px solid #e2e8f0'
-                    }}>Actions</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 500, color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>ID</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 500, color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Nom</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: '14px', fontWeight: 500, color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -628,11 +571,11 @@ const Annees = ({ user }) => {
                       <tr key={grade.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: '#334155' }}>{grade.id}</td>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: '#334155' }}>
-                          {editingGrade?.id === grade.id ? (
+                          {editingItem.type === 'grade' && editingItem.id === grade.id ? (
                             <input
                               type="text"
-                              value={editGradeValue}
-                              onChange={(e) => setEditGradeValue(e.target.value)}
+                              value={editingItem.value}
+                              onChange={(e) => setEditingItem({ ...editingItem, value: e.target.value })}
                               style={{ 
                                 padding: '8px 12px',
                                 borderRadius: '6px',
@@ -646,7 +589,7 @@ const Annees = ({ user }) => {
                           )}
                         </td>
                         <td style={{ padding: '12px 16px', fontSize: '14px', color: '#334155' }}>
-                          {editingGrade?.id === grade.id ? (
+                          {editingItem.type === 'grade' && editingItem.id === grade.id ? (
                             <>
                               <button
                                 onClick={handleUpdateGrade}
@@ -664,10 +607,7 @@ const Annees = ({ user }) => {
                                 <i className="fas fa-check"></i> Valider
                               </button>
                               <button
-                                onClick={() => {
-                                  setEditingGrade(null);
-                                  setEditGradeValue('');
-                                }}
+                                onClick={() => setEditingItem({ type: null, id: null, value: '' })}
                                 style={{ 
                                   backgroundColor: '#64748b',
                                   color: '#ffffff',
@@ -684,10 +624,7 @@ const Annees = ({ user }) => {
                           ) : (
                             <>
                               <button 
-                                onClick={() => {
-                                  setEditingGrade(grade);
-                                  setEditGradeValue(grade.nom);
-                                }}
+                                onClick={() => setEditingItem({ type: 'grade', id: grade.id, value: grade.nom })}
                                 style={{ 
                                   color: '#4f46e5', 
                                   background: 'none', 
@@ -718,20 +655,15 @@ const Annees = ({ user }) => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="3" style={{ 
-                        padding: '24px', 
-                        textAlign: 'center', 
-                        color: '#64748b',
-                        fontStyle: 'italic'
-                      }}>
+                      <td colSpan="3" style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontStyle: 'italic' }}>
                         Aucun grade trouvé
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

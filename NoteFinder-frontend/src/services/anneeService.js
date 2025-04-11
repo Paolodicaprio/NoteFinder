@@ -1,5 +1,12 @@
 import httpService from './api';
-
+// Fonction pour transformer la réponse de l'API en objet plus lisible
+const transformAnnee = (anneeArray) => {
+  if (!anneeArray || !Array.isArray(anneeArray)) return null;
+  return {
+    id: anneeArray[0],
+    annee: anneeArray[1],
+  };
+};
 const handleServiceError = (error, defaultMessage) => {
   if (error.response) {
     switch (error.response.status) {
@@ -19,46 +26,14 @@ const handleServiceError = (error, defaultMessage) => {
   }
 };
 // Années académiques
-export const fetchAnneesAcademiques = async (config = {}) => {
-  try {
-    const response = await httpService.get('/api/annees-academiques', {
-      ...config,
-      params: {
-        _: Date.now() // Cache buster
-      },
-      timeout: 10000 // 10 secondes timeout
-    });
-
-    // Validation robuste des données
-    if (!response.data) {
-      throw new Error('Aucune donnée reçue');
+  export const fetchAnneesAcademiques = async (filters = {}) => {
+    try {
+      const response = await httpService.get('/api/annees-academiques', { params: filters });
+      return response.data.map(transformAnnee).filter(Boolean);
+    } catch (error) {
+      throw new Error(error.response?.data?.message || 'Erreur lors de la récupération des annee_academique');
     }
-
-    if (Array.isArray(response.data)) {
-      return response.data;
-    }
-
-    if (response.data.data && Array.isArray(response.data.data)) {
-      return response.data.data;
-    }
-
-    throw new Error('Format de données inattendu');
-
-  } catch (error) {
-    console.error('Erreur fetchAnneesAcademiques:', {
-      url: error.config?.url,
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message
-    });
-
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Timeout: Le serveur a mis trop de temps à répondre');
-    }
-
-    throw error;
-  }
-};
+  };
 
 export const addAnneeAcademique = async (anneeData) => {
   try {
